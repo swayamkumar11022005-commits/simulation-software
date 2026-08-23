@@ -7,3 +7,5 @@ in the current main.py we have used these
 ![image](images/WhatsApp%20Image%202026-08-23%20at%2013.06.25.jpeg)
 
 as the examples
+
+there are a lot of folders that is the project structure there are only two files that has been written core/solver.py and main.py
