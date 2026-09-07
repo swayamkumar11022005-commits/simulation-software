@@ -1,8 +1,10 @@
 import numpy as np
+from core.devices import Diode
 
 class Circuit:
     def __init__(self):
         self.components = []
+        self.diodes = []
         self.nodes = set()
         self.node_map = {}
         self.v_source_count = 0
@@ -30,59 +32,94 @@ class Circuit:
         self.node_map = {node: i for i, node in enumerate(active_nodes)}
         self.node_map['0'] = -1  # Ground doesn't get a row/col in the MNA matrix
 
-    def solve(self):
-        """Constructs the MNA matrix and solves for voltages and currents."""
+    def add_diode(self, name, n1, n2, Is=1e-14, n=1.0):
+        self.diodes.append(Diode(name, n1, n2, Is, n))
+        self.nodes.update([str(n1), str(n2)])
+
+    def solve(self, max_iter=50, tol=1e-6):
         self._map_nodes()
-        N = len(self.node_map) - 1 # Number of active nodes (excluding ground)
-        M = self.v_source_count    # Number of independent voltage sources
+        N = len(self.node_map) - 1
+        M = self.v_source_count
         
-        # Initialize MNA matrix A and known vector z (Ax = z)
-        A = np.zeros((N + M, N + M))
-        z = np.zeros(N + M)
+        # 1. Build the STATIC linear base matrices
+        A_lin = np.zeros((N + M, N + M))
+        z_lin = np.zeros(N + M)
         
-        v_idx = 0 # Counter for tracking voltage source rows
-        
+        v_idx = 0
         for comp in self.components:
             comp_type, name, n1, n2, val = comp
-            idx1 = self.node_map[n1]
-            idx2 = self.node_map[n2]
+            idx1, idx2 = self.node_map[n1], self.node_map[n2]
             
             if comp_type == 'R':
                 g = 1.0 / val
-                if idx1 != -1:
-                    A[idx1, idx1] += g
-                if idx2 != -1:
-                    A[idx2, idx2] += g
+                if idx1 != -1: A_lin[idx1, idx1] += g
+                if idx2 != -1: A_lin[idx2, idx2] += g
                 if idx1 != -1 and idx2 != -1:
-                    A[idx1, idx2] -= g
-                    A[idx2, idx1] -= g
-                    
+                    A_lin[idx1, idx2] -= g
+                    A_lin[idx2, idx1] -= g
             elif comp_type == 'V':
                 row = N + v_idx
                 if idx1 != -1:
-                    A[idx1, row] += 1
-                    A[row, idx1] += 1
+                    A_lin[idx1, row] += 1
+                    A_lin[row, idx1] += 1
                 if idx2 != -1:
-                    A[idx2, row] -= 1
-                    A[row, idx2] -= 1
-                z[row] = val
+                    A_lin[idx2, row] -= 1
+                    A_lin[row, idx2] -= 1
+                z_lin[row] = val
                 v_idx += 1
-                
             elif comp_type == 'I':
-                # Current leaves n1, enters n2
-                if idx1 != -1:
-                    z[idx1] -= val 
-                if idx2 != -1:
-                    z[idx2] += val
+                if idx1 != -1: z_lin[idx1] -= val 
+                if idx2 != -1: z_lin[idx2] += val
 
-        # Solve the linear system (Update this part at the bottom of solver.py)
-        try:
-            x = np.linalg.solve(A, z)
-            return self._format_results(x, N)
-        except np.linalg.LinAlgError:
-            # Raise an actual error instead of returning a mixed dictionary
-            raise ValueError("Singular matrix. Check for floating nodes or shorted voltage sources.")
+        # 2. Newton-Raphson Iteration
+        x = np.zeros(N + M) # Initial guess: 0V at all nodes
         
+        for iteration in range(max_iter):
+            A = np.copy(A_lin)
+            z = np.copy(z_lin)
+            
+            # Add non-linear contributions
+            for diode in self.diodes:
+                idx1, idx2 = self.node_map[diode.n1], self.node_map[diode.n2]
+                
+                # Get current voltage guess across the diode
+                v1 = x[idx1] if idx1 != -1 else 0.0
+                v2 = x[idx2] if idx2 != -1 else 0.0
+                vd = v1 - v2
+                
+                # Calculate device state
+                Id = diode.get_current(vd)
+                gd = diode.get_conductance(vd)
+                Ieq = Id - (gd * vd)
+                
+                # Stamp dynamic conductance into A matrix
+                if idx1 != -1: A[idx1, idx1] += gd
+                if idx2 != -1: A[idx2, idx2] += gd
+                if idx1 != -1 and idx2 != -1:
+                    A[idx1, idx2] -= gd
+                    A[idx2, idx1] -= gd
+                    
+                # Stamp equivalent current into z vector
+                if idx1 != -1: z[idx1] -= Ieq
+                if idx2 != -1: z[idx2] += Ieq
+                
+            # Solve linearized system
+            try:
+                x_new = np.linalg.solve(A, z)
+            except np.linalg.LinAlgError:
+                raise ValueError("Singular matrix encountered.")
+                
+            # Check convergence
+            if np.max(np.abs(x_new - x)) < tol:
+                print(f"Converged in {iteration + 1} iterations.")
+                return self._format_results(x_new, N)
+                
+            # REMOVE THE DAMPING (alpha = 0.2). Let Newton-Raphson run at full speed!
+            x = x_new
+        
+        raise ValueError(f"Failed to converge after {max_iter} iterations.")
+    
+    
     def _format_results(self, x, N):
         """Packages the solved numpy array into a readable dictionary."""
         results = {"node_voltages": {}, "source_currents": {}}

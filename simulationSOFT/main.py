@@ -1,42 +1,23 @@
-from core.solver import Circuit
+from core.parser import NetlistParser
+from analysis.dcsweep import DCSweep
 
-def test_two_loop_circuit():
-    circuit = Circuit()
-        
-    """
-    ex 1:
-        circuit.add_v_source('V1', '1', '0', 12.0)  
-        circuit.add_resistor('R1', '1', '2', 4.0)   
-        circuit.add_resistor('R2', '2', '0', 8.0)  
-    """
+def run_dc_sweep(netlist_file):
+    # 1. Parse the netlist
+    parser = NetlistParser(netlist_file)
+    circuit = parser.parse()
     
-    """
-    ex 2:
-    """
-    #voltage
-    circuit.add_v_source('V1', '1', '0', 15.0)  
-    circuit.add_v_source('V2', '3', '0', 10.0)  
+    # 2. Initialize the Sweep Analyzer
+    analyzer = DCSweep(circuit)
     
-    #resistors
-    circuit.add_resistor('R1', '1', '2', 10.0)  # Top resistor, left loop
-    circuit.add_resistor('R2', '2', '0', 5.0)   # Shared middle resistor to ground
-    circuit.add_resistor('R3', '2', '3', 2.0)   # Top resistor, right loop
-
-    print("Solving circuit...")
-    
+    # 3. Sweep V1 from 0.0V to 1.0V over 100 data points
     try:
-        results = circuit.solve()
+        voltages, currents = analyzer.sweep_v_source('V1', 0.0, 1.0, 100)
     except ValueError as e:
-        print(f"Simulation failed: {e}")
+        print(f"Sweep failed: {e}")
         return
 
-    print("\n--- Node Voltages ---")
-    for node, voltage in results["node_voltages"].items():
-        print(f"{node}: {voltage} V")
-
-    print("\n--- Source Currents ---")
-    for source, current in results["source_currents"].items():
-        print(f"{source}: {current} A")
+    # 4. Generate the plot
+    analyzer.plot_iv_curve(voltages, currents, title="1N4148 Diode I-V Curve (Simulated)")
 
 if __name__ == "__main__":
-    test_two_loop_circuit()
+    run_dc_sweep("circuit.net")
