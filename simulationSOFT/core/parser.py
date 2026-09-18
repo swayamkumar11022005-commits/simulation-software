@@ -63,6 +63,8 @@ class NetlistParser:
 
                     if name.startswith('R'):
                         self.circuit.add_resistor(name, n1, n2, value)
+                    elif name.startswith('C'): # Added for Transient
+                        self.circuit.add_capacitor(name, n1, n2, value)
                     elif name.startswith('V'):
                         self.circuit.add_v_source(name, n1, n2, value)
                     elif name.startswith('I'):
