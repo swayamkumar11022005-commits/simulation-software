@@ -1,72 +1,66 @@
 import os
 from core.parser import NetlistParser
+from analysis.dcsweep import DCSweep
 from analysis.transient import TransientAnalysis
+from analysis.acsweep import ACSweep
 
-def run_transient_test():
-    # 1. Create a temporary netlist for an RC step response
-    # 1k resistor and 1uF capacitor = 1ms Time Constant (tau)
+def run_simulation(target_file="circuit.net"):
+    # 1. OS Check: Look for the physical file in the directory
+    if not os.path.exists(target_file):
+        print(f"Error: Could not find '{target_file}' in the current directory.")
+        print("Please ensure your netlist file is saved exactly as 'circuit.net'.")
+        return
 
-    temp_file = "circuit.net"
+    print(f"Found local netlist: {target_file}")
+    print(f"Reading netlist: {target_file}...\n")
 
-    print(f"Reading netlist: {temp_file}...")
-    
-    # 2. Parse the netlist
-    parser = NetlistParser(temp_file)
-    circuit = parser.parse()
-    
-    # 3. Run Transient Analysis
-    analyzer = TransientAnalysis(circuit)
-    
     try:
-        # Simulate for 5 time constants (5ms) with a 0.1ms step size
-        results = analyzer.run(t_stop=0.005, t_step=0.0001)
+        # 2. Parse the Netlist
+        parser = NetlistParser(target_file)
+        circuit = parser.parse()
         
-        # Plot the input voltage (Node 1) and capacitor voltage (Node 2)
-        analyzer.plot(results, plot_nodes=['1', '2'])
+        # 3. Topology Router: Decide between DC, AC, and Transient
+        analysis_type = parser.determine_analysis_type()
         
-    except ValueError as e:
+        if analysis_type == "dc_transient":
+            print("Router: Capacitors/Inductors detected. Running DC Transient Analysis...")
+            analyzer = TransientAnalysis(circuit)
+            results = analyzer.run(t_stop=0.005, t_step=0.0001)
+            active_nodes = [n for n in circuit.node_map.keys() if n != '0']
+            analyzer.plot(results, plot_nodes=active_nodes[:3])
+            
+        elif analysis_type == "ac_transient":
+            print("Router: SINE wave detected. Running AC Transient Analysis...")
+            analyzer = TransientAnalysis(circuit)
+            # You may want a longer t_stop here depending on the SINE frequency (e.g., 60Hz needs ~0.05s)
+            results = analyzer.run(t_stop=0.05, t_step=0.0001)
+            active_nodes = [n for n in circuit.node_map.keys() if n != '0']
+            analyzer.plot(results, plot_nodes=active_nodes[:3])
+            
+        elif analysis_type == "ac_sweep":
+            print("Router: AC source detected. Running AC Small-Signal Sweep...")
+            analyzer = ACSweep(circuit)
+            results = analyzer.run(f_start=10, f_stop=100000, points_per_decade=20)
+            active_nodes = [n for n in circuit.node_map.keys() if n != '0']
+            analyzer.plot_bode(results, plot_nodes=active_nodes[:3])
+            
+        elif analysis_type == "dc_sweep":
+            print("Router: Static topology detected...")
+            v_sources = [comp[1] for comp in circuit.components if comp[0] == 'V']
+            if v_sources:
+                print("Running DC Sweep...")
+                analyzer = DCSweep(circuit)
+                sweep_target = v_sources[0]
+                voltages, currents = analyzer.sweep_v_source(sweep_target, -5.0, 15.0, 200)
+                analyzer.plot_iv_curve(voltages, currents, title=f"DC Sweep for {sweep_target}")
+            else:
+                print("No voltage source found for a sweep. Calculating static DC Operating Point...")
+                results = circuit.solve()
+                for node, voltage in results["node_voltages"].items():
+                    print(f"{node}: {voltage} V")
+                
+    except Exception as e:
         print(f"Simulation failed: {e}")
-        
-    finally:
-        if os.path.exists(temp_file):
-            os.remove(temp_file)
 
 if __name__ == "__main__":
-    run_transient_test()
-    
-    
-"""
-
-basic capacitor circuit
-
-    Node 1                      Node 2
-         +------------[ R1 ]---------+
-         |            (1kΩ)          |
-         |                           |
-        (+) V1                      --- C1
-       (5.0V)                       --- (1µF)
-        (-)                          |
-         |                           |
-         +---------------------------+
-                                     |
-                                    ===  Node 0 (Ground)
-                                     -
-
-
-basic diode ckt
-
-Node 1                      Node 2                      Node 3
-         +------------[ R1 ]---------+----------[ R2 ]-----------+
-         |            (4kΩ)          |            (1kΩ)          |
-         |                           |                           |
-        (+) V1                      (^) I1                     _\|/_ D1
-       (12V)                        (2mA)                       / \  
-        (-)                          |                         -----
-         |                           |                           |
-         |                           |                           |
-         +---------------------------+---------------------------+
-                                     |
-                                    ===  Node 0 (Ground)
-                                     -
-
-"""
+    run_simulation("circuit.net")

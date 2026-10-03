@@ -1,3 +1,5 @@
- # circuit.add_resistor('R1', '1', '2', 10.0)  # Top resistor, left loop
-    # circuit.add_resistor('R2', '2', '0', 5.0)   # Shared middle resistor to ground
-    # circuit.add_resistor('R3', '2', '3', 2.0)   # Top resistor, right loop
+V1 1 0 12.0
+I1 0 2 2m
+R1 1 2 4k
+R2 2 3 1k
+D1 3 0

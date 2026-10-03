@@ -8,37 +8,34 @@ class TransientAnalysis:
     def run(self, t_stop, t_step):
         self.circuit._map_nodes()
         N = len(self.circuit.node_map) - 1
-        M = self.circuit.v_source_count
+        
+        # CRITICAL FIX: Expanded to provide history storage for inductor current
+        M = self.circuit.v_source_count + len(self.circuit.inductors)
         
         times = np.arange(0, t_stop, t_step)
-        x_prev = np.zeros(N + M)  # Assume initial state is 0V/0A
+        x_prev = np.zeros(N + M)  
         
         results_history = {"times": times, "node_voltages": {}}
-        
-        print(f"Running transient analysis (Step: {t_step}s, Stop: {t_stop}s)...")
+        print(f"Solving transient response from 0 to {t_stop}s (Step: {t_step}s)...")
         
         for t in times:
-            try:
-                # Pass previous state into solver
-                x_new = self.circuit.solve(dt=t_step, x_prev=x_prev, return_raw=True)
-            except ValueError as e:
-                raise ValueError(f"Transient solver failed at t={t}: {e}")
-                
+            # The crucial 't=t' argument injects the current time into the sine wave
+            x_new = self.circuit.solve(dt=t_step, x_prev=x_prev, return_raw=True, t=t)
+            
             formatted = self.circuit._format_results(x_new, N)
             
-            # Store voltages for plotting
             for node, voltage in formatted["node_voltages"].items():
                 if node not in results_history["node_voltages"]:
                     results_history["node_voltages"][node] = []
                 results_history["node_voltages"][node].append(voltage)
                 
-            x_prev = x_new # Advance time
+            x_prev = x_new  
             
         return results_history
 
     def plot(self, results, plot_nodes):
         plt.figure(figsize=(8, 5))
-        times = results["times"]
+        times = results["times"] * 1000 
         
         for node in plot_nodes:
             voltages = results["node_voltages"].get(f"V({node})")
@@ -46,8 +43,9 @@ class TransientAnalysis:
                 plt.plot(times, voltages, label=f"V({node})", linewidth=2)
                 
         plt.title("Transient Response")
-        plt.xlabel("Time (s)")
+        plt.xlabel("Time (ms)")
         plt.ylabel("Voltage (V)")
         plt.grid(True, linestyle='--', linewidth=0.5)
         plt.legend()
+        plt.tight_layout()
         plt.show()
