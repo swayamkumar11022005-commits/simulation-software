@@ -1,0 +1,23 @@
+*dc transient (capacitive n inductive)
+V1 1 0 5.0
+R1 1 2 10
+L1 2 3 10m
+C1 3 0 1u
+
+*dc sweep (for some reason it shows v1 node plot only)
+*V1 1 0 12.0
+*I1 0 2 2m
+*R1 1 2 4k
+*R2 2 3 1k
+*D1 3 0
+
+*half wave rectifier (ac transient)
+*V1 1 0 SINE 10.0 60
+*D1 1 2
+*R1 2 0 1k
+
+
+*high pass filter (ac sweep)
+*V1 1 0 AC 5.0 0
+*C1 1 2 1u
+*R1 2 0 1k

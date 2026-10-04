@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Circuit Builder</title>
+<style>
+  :root {
+    --bg: #0a0e1a; --panel: #0f1526; --panel2: #131b30; --border: #1e2a47;
+    --text: #e6edf7; --muted: #8392b0; --accent: #22d3ee; --accent2: #a78bfa;
+    --danger: #fb7185; --ok: #34d399;
+    --c-r: #fbbf24; --c-c: #22d3ee; --c-l: #a78bfa; --c-v: #fb7185;
+    --c-i: #34d399; --c-d: #fb923c; --c-g: #94a3b8; --wire: #5eead4;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 13px/1.4 Inter, "Segoe UI", system-ui, -apple-system, sans-serif; overflow: hidden; }
+  #app { display: grid; grid-template-columns: 158px 1fr 232px; grid-template-rows: 44px 1fr 26px;
+    height: 100vh; border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+    background: linear-gradient(180deg, #0c1222, #090d18); }
+  /* toolbar */
+  #toolbar { grid-column: 1 / 4; display: flex; align-items: center; gap: 6px; padding: 0 12px;
+    background: linear-gradient(90deg, #101a33, #0f1526 60%, #141233); border-bottom: 1px solid var(--border); }
+  #toolbar .brand { font-weight: 700; letter-spacing: .4px; margin-right: 10px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text;
+    background-clip: text; color: transparent; }
+  .tb { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
+    padding: 5px 10px; cursor: pointer; font: inherit; display: inline-flex; gap: 6px; align-items: center;
+    transition: .15s; }
+  .tb:hover { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .tb.active { background: rgba(34,211,238,.14); border-color: var(--accent); color: var(--accent); }
+  .tb:disabled { opacity: .35; cursor: default; box-shadow: none; border-color: var(--border); }
+  .sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
+  .spacer { flex: 1; }
+  kbd { font: 11px ui-monospace, monospace; color: var(--muted); border: 1px solid var(--border);
+    border-radius: 4px; padding: 0 4px; }
+  /* palette */
+  #palette { background: var(--panel); border-right: 1px solid var(--border); overflow-y: auto; padding: 8px; }
+  #palette h4 { margin: 10px 4px 6px; font-size: 10.5px; letter-spacing: 1.2px; text-transform: uppercase;
+    color: var(--muted); font-weight: 600; }
+  #palette h4:first-child { margin-top: 2px; }
+  .pal { display: flex; align-items: center; gap: 8px; padding: 5px 6px; margin-bottom: 4px;
+    border: 1px solid var(--border); border-radius: 10px; background: var(--panel2); cursor: grab;
+    user-select: none; transition: .15s; }
+  .pal:hover { border-color: var(--accent); transform: translateX(2px); background: #17213b; }
+  .pal:active { cursor: grabbing; }
+  .pal svg { width: 44px; height: 28px; flex: none; }
+  .pal span { font-size: 12px; line-height: 1.15; }
+  .pal small { color: var(--muted); display: block; font-size: 10px; }
+  /* canvas */
+  #stage { position: relative; background: var(--bg); outline: none; }
+  #svg { width: 100%; height: 100%; display: block; touch-action: none; }
+  #hint { position: absolute; left: 50%; top: 42%; transform: translate(-50%,-50%); text-align: center;
+    color: var(--muted); pointer-events: none; transition: opacity .3s; }
+  #hint b { display: block; font-size: 15px; color: var(--text); margin-bottom: 4px; }
+  #zoomctl { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 4px; }
+  #zoomctl .tb { padding: 3px 9px; }
+  /* inspector */
+  #inspector { background: var(--panel); border-left: 1px solid var(--border); padding: 12px; overflow-y: auto; }
+  #inspector h3 { margin: 0 0 2px; font-size: 14px; }
+  #inspector .sub { color: var(--muted); font-size: 11px; margin-bottom: 12px; }
+  label { display: block; font-size: 10.5px; letter-spacing: .8px; text-transform: uppercase;
+    color: var(--muted); margin: 10px 0 4px; }
+  input[type=text] { width: 100%; background: #0a1020; color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 7px 9px; font: 13px ui-monospace, Menlo, Consolas, monospace; outline: none; }
+  input[type=text]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(34,211,238,.15); }
+  input.bad { border-color: var(--danger); }
+  .row { display: flex; gap: 6px; margin-top: 12px; }
+  .row .tb { flex: 1; justify-content: center; }
+  .tb.danger:hover { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger) inset; color: var(--danger); }
+  .tips { color: var(--muted); font-size: 12px; line-height: 1.7; }
+  .tips b { color: var(--text); font-weight: 600; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chip { font: 11px ui-monospace, monospace; padding: 2px 7px; border-radius: 99px;
+    border: 1px solid var(--border); color: var(--muted); cursor: pointer; }
+  .chip:hover { color: var(--accent); border-color: var(--accent); }
+  /* status */
+  #status { grid-column: 1 / 4; display: flex; align-items: center; gap: 16px; padding: 0 12px;
+    background: #0b1020; border-top: 1px solid var(--border); color: var(--muted); font-size: 11.5px; }
+  #status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); display: inline-block; margin-right: 6px; }
+  /* svg bits */
+  .term { fill: #0a0e1a; stroke: var(--accent); stroke-width: 1.6; cursor: crosshair; transition: r .1s; }
+  .term:hover { r: 6.5; fill: var(--accent); }
+  .comp .body { cursor: move; }
+  .comp.sel .glow { opacity: 1; }
+  .glow { opacity: 0; fill: rgba(34,211,238,.07); stroke: var(--accent); stroke-dasharray: 4 3; stroke-width: 1; }
+  .wire { stroke: var(--wire); stroke-width: 2.2; stroke-linecap: round; fill: none; }
+  .wire.sel { stroke: #fff; filter: drop-shadow(0 0 4px var(--accent)); }
+  .wire-hit { stroke: transparent; stroke-width: 12; cursor: pointer; fill: none; }
+  .junction { fill: var(--wire); }
+  .lbl-name { font: 600 11.5px Inter, system-ui, sans-serif; }
+  .lbl-val { font: 11px ui-monospace, Menlo, Consolas, monospace; fill: var(--muted); }
+  .badge rect { fill: rgba(10,14,26,.92); stroke: var(--accent); stroke-width: 1; }
+  .badge text { font: 600 10px ui-monospace, monospace; fill: var(--accent); }
+  .badge.gnd rect { stroke: var(--c-g); } .badge.gnd text { fill: var(--c-g); }
+  .preview { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 5 4; fill: none; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="toolbar">
+    <span class="brand">⚡ CIRCUIT STUDIO</span>
+    <button class="tb active" id="t-select" title="Select / move (V)">⌖ Select</button>
+    <button class="tb" id="t-wire" title="Draw wires (W)">╱ Wire</button>
+    <span class="sep"></span>
+    <button class="tb" id="t-rot" title="Rotate selected (R)">⟳ Rotate</button>
+    <button class="tb danger" id="t-del" title="Delete selected (Del)">✕ Delete</button>
+    <span class="sep"></span>
+    <button class="tb" id="t-undo" title="Undo (Ctrl+Z)">↶</button>
+    <button class="tb" id="t-redo" title="Redo (Ctrl+Y)">↷</button>
+    <span class="spacer"></span>
+    <button class="tb" id="t-fit" title="Fit circuit to view">⤢ Fit</button>
+    <button class="tb danger" id="t-clear" title="Remove everything">Clear</button>
+  </div>
+
+  <div id="palette"></div>
+
+  <div id="stage" tabindex="0">
+    <svg id="svg" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+          <circle cx="0" cy="0" r="1.1" fill="#26334f"/>
+        </pattern>
+        <pattern id="grid5" width="100" height="100" patternUnits="userSpaceOnUse">
+          <circle cx="0" cy="0" r="1.7" fill="#3a4b73"/>
+        </pattern>
+      </defs>
+      <rect id="bg" x="-20000" y="-20000" width="40000" height="40000" fill="url(#grid)"/>
+      <rect x="-20000" y="-20000" width="40000" height="40000" fill="url(#grid5)" pointer-events="none"/>
+      <g id="wires"></g>
+      <g id="junctions"></g>
+      <g id="comps"></g>
+      <g id="badges"></g>
+      <g id="overlay"></g>
+    </svg>
+    <div id="hint"><b>Drag components from the left onto the canvas</b>
+      then drag from a terminal ● to another to wire them. Add a Ground!</div>
+    <div id="zoomctl">
+      <button class="tb" id="z-out">−</button><button class="tb" id="z-in">+</button>
+    </div>
+  </div>
+
+  <div id="inspector"></div>
+
+  <div id="status"><span><i class="dot"></i><span id="st-main">Ready</span></span>
+    <span id="st-counts"></span><span class="spacer"></span><span id="st-tool"></span></div>
+</div>
+
+<script>
+/* =====================================================================
+ *  Streamlit component plumbing (no build step needed)
+ * ===================================================================== */
+const ST = {
+  send(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type}, data), "*"); },
+  ready() { this.send("streamlit:componentReady", {apiVersion: 1}); },
+  setHeight(h) { this.send("streamlit:setFrameHeight", {height: h}); },
+  setValue(v) { this.send("streamlit:setComponentValue", {value: v, dataType: "json"}); },
+};
+
+/* =====================================================================
+ *  Component catalogue  (must match core/schematic.py)
+ * ===================================================================== */
+const G = 20;
+const SPEC = {
+  GND:  {prefix: "GND", label: "Ground",      sub: "0 V reference", color: "--c-g", fields: [], group: "Reference"},
+  R:    {prefix: "R", label: "Resistor",       sub: "Ω",  color: "--c-r", fields: [["value","Resistance","1k"]], group: "Passive"},
+  C:    {prefix: "C", label: "Capacitor",      sub: "F",  color: "--c-c", fields: [["value","Capacitance","1u"]], group: "Passive"},
+  L:    {prefix: "L", label: "Inductor",       sub: "H",  color: "--c-l", fields: [["value","Inductance","10m"]], group: "Passive"},
+  VDC:  {prefix: "V", label: "DC Voltage",     sub: "battery",    color: "--c-v", fields: [["value","Voltage (V)","5"]], group: "Sources", rot: 1},
+  VSIN: {prefix: "V", label: "Sine Voltage",   sub: "transient",  color: "--c-v", fields: [["amp","Amplitude (V)","5"],["freq","Frequency (Hz)","60"]], group: "Sources", rot: 1},
+  VAC:  {prefix: "V", label: "AC Sweep Src",   sub: "Bode / freq",color: "--c-v", fields: [["mag","Magnitude (V)","1"],["phase","Phase (deg)","0"]], group: "Sources", rot: 1},
+  IDC:  {prefix: "I", label: "DC Current",     sub: "A",          color: "--c-i", fields: [["value","Current (A)","1m"]], group: "Sources", rot: 1},
+  ISIN: {prefix: "I", label: "Sine Current",   sub: "transient",  color: "--c-i", fields: [["amp","Amplitude (A)","1m"],["freq","Frequency (Hz)","60"]], group: "Sources", rot: 1},
+  IAC:  {prefix: "I", label: "AC Current",     sub: "Bode / freq",color: "--c-i", fields: [["mag","Magnitude (A)","1m"],["phase","Phase (deg)","0"]], group: "Sources", rot: 1},
+  D:    {prefix: "D", label: "Diode",          sub: "anode → cathode", color: "--c-d", fields: [], group: "Semiconductor"},
+};
+
+/* symbol artwork in local coordinates, rotation 0, terminals at (±40, 0) */
+function symbol(type, col) {
+  const s = `stroke="${col}" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"`;
+  const sine = (k=1) => `<path d="M-11,0 C-7,${-12*k} -3,${-12*k} 0,0 S7,${12*k} 11,0" ${s} stroke-width="1.8"/>`;
+  const plus = (x,y) => `<path d="M${x-4},${y} h8 M${x},${y-4} v8" ${s} stroke-width="1.6"/>`;
+  switch (type) {
+    case "GND": return `<path d="M0,-20 V0 M-15,0 H15 M-10,6 H10 M-5,12 H5" ${s}/>`;
+    case "R": return `<path d="M-40,0 H-22 L-17,-9 L-9,9 L-1,-9 L7,9 L15,-9 L22,0 H40" ${s}/>`;
+    case "C": return `<path d="M-40,0 H-6 M-6,-15 V15 M6,-15 V15 M6,0 H40" ${s}/>`;
+    case "L": return `<path d="M-40,0 H-24 a6,6 0 0 1 12,0 a6,6 0 0 1 12,0 a6,6 0 0 1 12,0 a6,6 0 0 1 12,0 H40" ${s}/>`;
+    case "D": return `<path d="M-40,0 H-10 M10,0 H40 M10,-13 V13" ${s}/><path d="M-10,-13 L10,0 L-10,13 Z" ${s} fill="${col}" fill-opacity=".18"/>`;
+    case "VDC": return `<path d="M-40,0 H-18 M18,0 H40" ${s}/><circle r="18" ${s}/>${plus(-8,0)}<path d="M5,0 h7" ${s} stroke-width="1.6"/>`;
+    case "VSIN": return `<path d="M-40,0 H-18 M18,0 H40" ${s}/><circle r="18" ${s}/>${sine()}${plus(-30,-9)}`;
+    case "VAC": return `<path d="M-40,0 H-18 M18,0 H40" ${s}/><circle r="18" ${s} stroke-dasharray="4 3"/>${sine()}${plus(-30,-9)}`;
+    case "IDC": return `<path d="M-40,0 H-18 M18,0 H40" ${s}/><circle r="18" ${s}/><path d="M-9,0 H9 M3,-5 L9,0 L3,5" ${s}/>`;
+    case "ISIN": return `<path d="M-40,0 H-18 M18,0 H40 M26,-5 L32,0 L26,5" ${s}/><circle r="18" ${s}/>${sine()}`;
+    case "IAC": return `<path d="M-40,0 H-18 M18,0 H40 M26,-5 L32,0 L26,5" ${s}/><circle r="18" ${s} stroke-dasharray="4 3"/><path d="M-9,0 H9 M3,-5 L9,0 L3,5" ${s}/>`;
+  }
+  return "";
+}
+
+function termOffsets(type) { return type === "GND" ? [[0,-G]] : [[-2*G,0],[2*G,0]]; }
+function termPos(c) {
+  const out = [];
+  for (let [dx,dy] of termOffsets(c.type)) {
+    for (let i = 0; i < ((c.rot % 4) + 4) % 4; i++) [dx,dy] = [-dy,dx];
+    out.push([c.x + dx, c.y + dy]);
+  }
+  return out;
+}
+
+/* =====================================================================
+ *  State
+ * ===================================================================== */
+let comps = [];          // {name,type,x,y,rot,value|amp|freq|mag|phase}
+let wires = [];          // {id,x1,y1,x2,y2}
+let nextWire = 1;
+let sel = null;          // {kind:'c'|'w', id}
+let tool = "select";
+let view = {x: -20, y: 60, w: 760, h: 520};
+let undoStack = [], redoStack = [];
+let lastToken = null, lastEmit = "";
+
+const $ = id => document.getElementById(id);
+const svg = $("svg");
+const NS = "http://www.w3.org/2000/svg";
+const snap = v => Math.round(v / G) * G;
+
+function snapshot() { return JSON.stringify({comps, wires, nextWire}); }
+function restore(s) { const o = JSON.parse(s); comps = o.comps; wires = o.wires; nextWire = o.nextWire; sel = null; }
+function pushUndo() { undoStack.push(snapshot()); if (undoStack.length > 100) undoStack.shift(); redoStack = []; }
+function undo() { if (!undoStack.length) return; redoStack.push(snapshot()); restore(undoStack.pop()); refresh(true); }
+function redo() { if (!redoStack.length) return; undoStack.push(snapshot()); restore(redoStack.pop()); refresh(true); }
+
+function uniqueName(prefix) {
+  let n = 1; const used = new Set(comps.map(c => c.name));
+  while (used.has(prefix + n)) n++;
+  return prefix + n;
+}
+
+function addComponent(type, x, y) {
+  const spec = SPEC[type];
+  const c = {name: uniqueName(spec.prefix), type, x: snap(x), y: snap(y), rot: spec.rot || 0};
+  for (const [k,, def] of spec.fields) c[k] = def;
+  pushUndo(); comps.push(c); sel = {kind: "c", id: c.name};
+  refresh(true);
+}
+
+/* =====================================================================
+ *  Connectivity (mirror of core/schematic.py :: compute_nets)
+ * ===================================================================== */
+function computeNets() {
+  const parent = new Map();
+  const key = (x,y) => x + "," + y;
+  const find = a => { if (!parent.has(a)) parent.set(a,a); while (parent.get(a) !== a) { parent.set(a, parent.get(parent.get(a))); a = parent.get(a);} return a; };
+  const union = (a,b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(rb, ra); };
+  const onSeg = (px,py,x1,y1,x2,y2) => ((px-x1)*(y2-y1) - (py-y1)*(x2-x1) === 0) &&
+      Math.min(x1,x2) <= px && px <= Math.max(x1,x2) && Math.min(y1,y2) <= py && py <= Math.max(y1,y2);
+  const pts = new Map(); const terms = [];
+  for (const c of comps) termPos(c).forEach((p,i) => { terms.push({c,i,p}); pts.set(key(...p), p); });
+  for (const w of wires) {
+    pts.set(key(w.x1,w.y1), [w.x1,w.y1]); pts.set(key(w.x2,w.y2), [w.x2,w.y2]);
+    union(key(w.x1,w.y1), key(w.x2,w.y2));
+  }
+  for (const w of wires) for (const [k,p] of pts) if (onSeg(p[0],p[1],w.x1,w.y1,w.x2,w.y2)) union(k, key(w.x1,w.y1));
+  const gnd = new Set();
+  for (const t of terms) { find(key(...t.p)); if (t.c.type === "GND") gnd.add(find(key(...t.p))); }
+  const names = new Map(); let n = 1;
+  const nodeOf = r => { if (gnd.has(r)) return "0"; if (!names.has(r)) names.set(r, String(n++)); return names.get(r); };
+  const badge = []; const seen = new Set(); const counts = new Map();
+  for (const t of terms) { const r = find(key(...t.p)); counts.set(r, (counts.get(r)||0)+1); }
+  for (const t of terms) {
+    if (t.c.type === "GND") continue;
+    const r = find(key(...t.p)); t.node = nodeOf(r); t.dangling = counts.get(r) === 1;
+  }
+  for (const t of terms) {
+    const r = find(key(...t.p));
+    if (seen.has(r) || (counts.get(r) < 2 && t.c.type !== "GND")) continue;
+    seen.add(r); badge.push({node: gnd.has(r) ? "0" : nodeOf(r), p: t.p});
+  }
+  let nodeCount = 0; for (const [r] of names) if (counts.get(r) >= 2) nodeCount++;
+  return {terms, badge, nodeCount, hasGround: gnd.size > 0};
+}
+
+/* =====================================================================
+ *  Rendering
+ * ===================================================================== */
+function el(tag, attrs = {}, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function cssVar(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+function valueText(c) {
+  switch (c.type) {
+    case "VSIN": case "ISIN": return `${c.amp} @ ${c.freq}Hz`;
+    case "VAC": case "IAC": return `AC ${c.mag}∠${c.phase}°`;
+    case "D": case "GND": return "";
+    default: return c.value;
+  }
+}
+
+function render() {
+  svg.setAttribute("viewBox", `${view.x} ${view.y} ${view.w} ${view.h}`);
+  const gW = $("wires"), gJ = $("junctions"), gC = $("comps"), gB = $("badges");
+  gW.replaceChildren(); gJ.replaceChildren(); gC.replaceChildren(); gB.replaceChildren();
+
+  for (const w of wires) {
+    const cls = sel && sel.kind === "w" && sel.id === w.id ? "wire sel" : "wire";
+    const g = el("g", {"data-wire": w.id}, gW);
+    el("line", {x1:w.x1,y1:w.y1,x2:w.x2,y2:w.y2, class: cls}, g);
+    el("line", {x1:w.x1,y1:w.y1,x2:w.x2,y2:w.y2, class: "wire-hit"}, g);
+  }
+
+  const nets = computeNets();
+
+  for (const c of comps) {
+    const col = cssVar(SPEC[c.type].color);
+    const isSel = sel && sel.kind === "c" && sel.id === c.name;
+    const g = el("g", {class: "comp" + (isSel ? " sel" : ""), "data-comp": c.name}, gC);
+    const body = el("g", {transform: `translate(${c.x},${c.y}) rotate(${c.rot * 90})`}, g);
+    const ext = c.type === "GND" ? {x:-22,y:-24,w:44,h:42} : {x:-42,y:-24,w:84,h:48};
+    el("rect", {class: "glow", x: ext.x, y: ext.y, width: ext.w, height: ext.h, rx: 8}, body);
+    body.insertAdjacentHTML("beforeend", symbol(c.type, col));
+    el("rect", {class: "body", x: ext.x+8, y: ext.y, width: ext.w-16, height: ext.h, fill: "transparent"}, body);
+
+    // labels stay upright
+    const vertical = c.rot % 2 === 1;
+    const lx = vertical ? c.x + 26 : c.x, ly = vertical ? c.y - 4 : c.y - 30;
+    const anchor = vertical ? "start" : "middle";
+    if (c.type !== "GND") {
+      const t = el("text", {x: lx, y: ly, class: "lbl-name", fill: col, "text-anchor": anchor, "pointer-events": "none"}, g);
+      t.textContent = c.name;
+      const v = valueText(c);
+      if (v) { const t2 = el("text", {x: lx, y: ly + 13, class: "lbl-val", "text-anchor": anchor, "pointer-events": "none"}, g); t2.textContent = v; }
+    }
+  }
+
+  // terminals drawn on top so they are always grabbable
+  for (const t of nets.terms) {
+    const circ = el("circle", {class: "term", cx: t.p[0], cy: t.p[1], r: 4.5,
+      "data-comp": t.c.name, "data-term": t.i}, gC);
+    if (t.dangling) circ.setAttribute("style", "stroke:#fb7185");
+  }
+
+  // junction dots where 3+ things meet
+  const cnt = new Map();
+  const k = (x,y) => x + "," + y;
+  const bump = (x,y,n=1) => cnt.set(k(x,y), (cnt.get(k(x,y))||0) + n);
+  for (const w of wires) { bump(w.x1,w.y1); bump(w.x2,w.y2); }
+  for (const t of nets.terms) bump(t.p[0], t.p[1]);
+  for (const key of [...cnt.keys()]) {
+    const [x,y] = key.split(",").map(Number);
+    let n = cnt.get(key);
+    for (const w of wires) {
+      const on = ((x-w.x1)*(w.y2-w.y1) - (y-w.y1)*(w.x2-w.x1) === 0) &&
+        Math.min(w.x1,w.x2) <= x && x <= Math.max(w.x1,w.x2) && Math.min(w.y1,w.y2) <= y && y <= Math.max(w.y1,w.y2);
+      const end = (w.x1 === x && w.y1 === y) || (w.x2 === x && w.y2 === y);
+      if (on && !end) n += 2;
+    }
+    if (n >= 3) el("circle", {class: "junction", cx: x, cy: y, r: 4}, $("junctions"));
+  }
+
+  // node badges
+  for (const b of nets.badge) {
+    const txt = b.node === "0" ? "GND" : "N" + b.node;
+    const g = el("g", {class: "badge" + (b.node === "0" ? " gnd" : ""), transform: `translate(${b.p[0]+7},${b.p[1]-20})`, "pointer-events": "none"}, gB);
+    const w = txt.length * 6.4 + 10;
+    el("rect", {x: 0, y: 0, width: w, height: 14, rx: 7}, g);
+    const t = el("text", {x: w/2, y: 10.4, "text-anchor": "middle"}, g); t.textContent = txt;
+  }
+
+  $("hint").style.opacity = comps.length ? 0 : 1;
+  $("st-counts").textContent = `${comps.filter(c=>c.type!=="GND").length} components · ${wires.length} wires · ${nets.nodeCount} nodes`;
+  const warn = !nets.hasGround && comps.length ? "No ground yet" : (nets.terms.some(t => t.dangling) ? "Unconnected terminal(s) in red" : "Circuit looks connected");
+  $("st-main").textContent = warn;
+  $("st-tool").textContent = tool === "wire" ? "Wire tool — click/drag between terminals · Esc to cancel" : "Select tool — drag components, Del to remove, R to rotate";
+  $("t-undo").disabled = !undoStack.length; $("t-redo").disabled = !redoStack.length;
+  $("t-select").classList.toggle("active", tool === "select");
+  $("t-wire").classList.toggle("active", tool === "wire");
+  $("stage").style.cursor = tool === "wire" ? "crosshair" : "default";
+}
+
+/* =====================================================================
+ *  Inspector
+ * ===================================================================== */
+const VALID = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?[a-zA-Z]*$/;
+function renderInspector() {
+  const box = $("inspector");
+  if (!sel) {
+    box.innerHTML = `<h3>Properties</h3><div class="sub">Select a component to edit it</div>
+      <div class="tips"><b>Drag</b> parts from the palette<br><b>Wire</b> terminal → terminal<br>
+      <b>Double-click</b> a part to edit<br><kbd>R</kbd> rotate &nbsp;<kbd>Del</kbd> delete<br>
+      <kbd>W</kbd> wire &nbsp;<kbd>V</kbd> select<br><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Y</kbd> undo / redo<br>
+      <b>Scroll</b> to zoom · <b>drag</b> background to pan</div>
+      <label>SPICE suffixes</label>
+      <div class="chips"><span class="chip">k = 10³</span><span class="chip">MEG = 10⁶</span><span class="chip">m = 10⁻³</span>
+      <span class="chip">u = 10⁻⁶</span><span class="chip">n = 10⁻⁹</span><span class="chip">p = 10⁻¹²</span></div>
+      <div class="tips" style="margin-top:8px">Note: <b>M</b> is milli, use <b>MEG</b> for mega.</div>`;
+    return;
+  }
+  if (sel.kind === "w") {
+    box.innerHTML = `<h3>Wire</h3><div class="sub">Connects everything at both ends</div>
+      <div class="row"><button class="tb danger" id="i-del">✕ Delete wire</button></div>`;
+    $("i-del").onclick = deleteSel; return;
+  }
+  const c = comps.find(c => c.name === sel.id); if (!c) return;
+  const spec = SPEC[c.type];
+  let html = `<h3 style="color:${cssVar(spec.color)}">${spec.label}</h3><div class="sub">${c.type === "GND" ? "All grounds are node 0" : "Terminal 1 = " + (c.type === "D" ? "anode" : /^[VI]/.test(c.type) ? (c.type[0] === "V" ? "positive (+)" : "current leaves here") : "left (rot 0)")}</div>`;
+  if (c.type !== "GND") html += `<label>Name</label><input type="text" id="f-name" value="${c.name}" spellcheck="false">`;
+  for (const [k, lab] of spec.fields) html += `<label>${lab}</label><input type="text" data-f="${k}" value="${c[k] ?? ""}" spellcheck="false">`;
+  html += `<div class="row"><button class="tb" id="i-rot">⟳ Rotate</button><button class="tb danger" id="i-del">✕ Delete</button></div>`;
+  box.innerHTML = html;
+  $("i-rot").onclick = rotateSel; $("i-del").onclick = deleteSel;
+  box.querySelectorAll("input[data-f]").forEach(inp => {
+    const k = inp.dataset.f;
+    const check = () => { inp.classList.toggle("bad", !VALID.test(inp.value.trim())); };
+    check();
+    inp.addEventListener("focus", () => inp._u = snapshot());
+    inp.addEventListener("input", () => { c[k] = inp.value.trim(); check(); render(); emit(); });
+    inp.addEventListener("change", () => { if (inp._u && inp._u !== snapshot()) { undoStack.push(inp._u); redoStack = []; } });
+  });
+  const nm = $("f-name");
+  if (nm) {
+    nm.addEventListener("change", () => {
+      let v = nm.value.toUpperCase().replace(/[^A-Z0-9_]/g, "");
+      if (!v.startsWith(spec.prefix)) v = spec.prefix + v;
+      if (comps.some(o => o !== c && o.name === v)) v = uniqueName(spec.prefix);
+      pushUndo(); c.name = v; sel = {kind: "c", id: v}; refresh(true);
+    });
+  }
+}
+
+/* =====================================================================
+ *  Actions
+ * ===================================================================== */
+function deleteSel() {
+  if (!sel) return; pushUndo();
+  if (sel.kind === "c") comps = comps.filter(c => c.name !== sel.id);
+  else wires = wires.filter(w => w.id !== sel.id);
+  sel = null; refresh(true);
+}
+function rotateSel() {
+  if (!sel || sel.kind !== "c") return;
+  const c = comps.find(c => c.name === sel.id); if (!c) return;
+  pushUndo();
+  const before = termPos(c); c.rot = (c.rot + 1) % 4; const after = termPos(c);
+  // drag attached wire ends along with the terminals
+  before.forEach((b, i) => moveEnds(b, after[i]));
+  refresh(true);
+}
+function moveEnds(from, to) {
+  for (const w of wires) {
+    if (w.x1 === from[0] && w.y1 === from[1]) { w.x1 = to[0]; w.y1 = to[1]; }
+    if (w.x2 === from[0] && w.y2 === from[1]) { w.x2 = to[0]; w.y2 = to[1]; }
+  }
+}
+function clearAll() { if (!comps.length && !wires.length) return; pushUndo(); comps = []; wires = []; sel = null; refresh(true); }
+function setTool(t) { tool = t; cancelWiring(); render(); }
+
+function fit() {
+  const xs = [], ys = [];
+  for (const c of comps) { const [x,y] = [c.x,c.y]; xs.push(x-60, x+60); ys.push(y-60, y+60); }
+  for (const w of wires) { xs.push(w.x1, w.x2); ys.push(w.y1, w.y2); }
+  const r = svg.getBoundingClientRect(); const ar = (r.width || 800) / (r.height || 500);
+  if (!xs.length) { view = {x: -20, y: 60, w: 760, h: 760 / ar}; render(); return; }
+  const minx = Math.min(...xs), maxx = Math.max(...xs), miny = Math.min(...ys), maxy = Math.max(...ys);
+  let w = Math.max(maxx - minx, 320) + 80, h = Math.max(maxy - miny, 200) + 80;
+  if (w / h > ar) h = w / ar; else w = h * ar;
+  view = {x: (minx + maxx) / 2 - w / 2, y: (miny + maxy) / 2 - h / 2, w, h}; render();
+}
+function zoom(f, cx, cy) {
+  const r = svg.getBoundingClientRect();
+  cx = cx ?? view.x + view.w / 2; cy = cy ?? view.y + view.h / 2;
+  const nw = Math.min(Math.max(view.w * f, 160), 6000), k = nw / view.w;
+  view = {x: cx - (cx - view.x) * k, y: cy - (cy - view.y) * k, w: nw, h: view.h * k}; render();
+}
+
+/* =====================================================================
+ *  Pointer interaction
+ * ===================================================================== */
+function toWorld(ev) {
+  const pt = svg.createSVGPoint(); pt.x = ev.clientX; pt.y = ev.clientY;
+  const p = pt.matrixTransform(svg.getScreenCTM().inverse()); return {x: p.x, y: p.y};
+}
+let drag = null;       // {mode:'move'|'pan'|'wire', ...}
+let wiring = null;     // {sx,sy,cx,cy,sticky}
+
+function cancelWiring() { wiring = null; $("overlay").replaceChildren(); }
+function drawPreview() {
+  const o = $("overlay"); o.replaceChildren();
+  if (!wiring) return;
+  const pts = route(wiring.sx, wiring.sy, wiring.cx, wiring.cy);
+  el("polyline", {class: "preview", points: pts.map(p => p.join(",")).join(" ")}, o);
+  el("circle", {cx: wiring.cx, cy: wiring.cy, r: 5, fill: "none", stroke: "#22d3ee", "stroke-width": 1.5}, o);
+}
+function route(sx, sy, ex, ey) {
+  if (sx === ex || sy === ey) return [[sx,sy],[ex,ey]];
+  return [[sx,sy],[ex,sy],[ex,ey]];
+}
+function commitWire() {
+  const pts = route(wiring.sx, wiring.sy, wiring.cx, wiring.cy);
+  const add = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [a, b] = [pts[i], pts[i+1]];
+    if (a[0] === b[0] && a[1] === b[1]) continue;
+    add.push({id: "w" + (nextWire++), x1: a[0], y1: a[1], x2: b[0], y2: b[1]});
+  }
+  if (add.length) { pushUndo(); wires.push(...add); }
+  cancelWiring(); refresh(true);
+}
+
+svg.addEventListener("pointerdown", ev => {
+  $("stage").focus({preventScroll: true});
+  if (ev.button === 1 || ev.button === 2) { startPan(ev); return; }
+  const w = toWorld(ev); const sx = snap(w.x), sy = snap(w.y);
+  const tEl = ev.target.closest(".term"); const cEl = ev.target.closest("[data-comp]"); const wEl = ev.target.closest("[data-wire]");
+
+  if (wiring && wiring.sticky) { wiring.cx = sx; wiring.cy = sy; commitWire(); return; }
+
+  if (tEl || tool === "wire") {
+    let px = sx, py = sy;
+    if (tEl) { const c = comps.find(c => c.name === tEl.dataset.comp); [px, py] = termPos(c)[+tEl.dataset.term]; }
+    wiring = {sx: px, sy: py, cx: px, cy: py, sticky: false, down: {x: ev.clientX, y: ev.clientY}};
+    svg.setPointerCapture(ev.pointerId); drawPreview(); return;
+  }
+  if (cEl) {
+    const c = comps.find(c => c.name === cEl.dataset.comp);
+    sel = {kind: "c", id: c.name};
+    const attached = termPos(c).map(p => p.slice());
+    drag = {mode: "move", c, ox: w.x - c.x, oy: w.y - c.y, undo: snapshot(), moved: false, last: attached, attached};
+    svg.setPointerCapture(ev.pointerId); render(); renderInspector(); return;
+  }
+  if (wEl) { sel = {kind: "w", id: wEl.dataset.wire}; render(); renderInspector(); return; }
+  sel = null; render(); renderInspector(); startPan(ev);
+});
+function startPan(ev) {
+  drag = {mode: "pan", sx: ev.clientX, sy: ev.clientY, vx: view.x, vy: view.y}; svg.setPointerCapture(ev.pointerId);
+}
+svg.addEventListener("pointermove", ev => {
+  if (wiring) {
+    const w = toWorld(ev); wiring.cx = snap(w.x); wiring.cy = snap(w.y); drawPreview(); return;
+  }
+  if (!drag) return;
+  if (drag.mode === "pan") {
+    const r = svg.getBoundingClientRect();
+    view.x = drag.vx - (ev.clientX - drag.sx) * view.w / r.width; view.y = drag.vy - (ev.clientY - drag.sy) * view.h / r.height; render(); return;
+  }
+  if (drag.mode === "move") {
+    const w = toWorld(ev); const nx = snap(w.x - drag.ox), ny = snap(w.y - drag.oy);
+    if (nx === drag.c.x && ny === drag.c.y) return;
+    const oldT = termPos(drag.c);
+    drag.c.x = nx; drag.c.y = ny; drag.moved = true;
+    const newT = termPos(drag.c);
+    oldT.forEach((o, i) => moveEnds(o, newT[i]));
+    render();
+  }
+});
+svg.addEventListener("pointerup", ev => {
+  if (wiring) {
+    const moved = wiring.cx !== wiring.sx || wiring.cy !== wiring.sy;
+    if (moved) commitWire();
+    else if (!wiring.sticky) { wiring.sticky = true; }   // click-click mode
+    return;
+  }
+  if (drag && drag.mode === "move" && drag.moved) { undoStack.push(drag.undo); redoStack = []; refresh(true); }
+  drag = null;
+});
+svg.addEventListener("dblclick", ev => {
+  const cEl = ev.target.closest("[data-comp]"); if (!cEl || ev.target.closest(".term")) return;
+  const first = $("inspector").querySelector("input"); if (first) { first.focus(); first.select(); }
+});
+svg.addEventListener("wheel", ev => {
+  ev.preventDefault(); const w = toWorld(ev); zoom(ev.deltaY < 0 ? 0.88 : 1.14, w.x, w.y);
+}, {passive: false});
+svg.addEventListener("contextmenu", e => e.preventDefault());
+
+/* palette drag & drop */
+function buildPalette() {
+  const p = $("palette"); let group = "";
+  for (const [type, spec] of Object.entries(SPEC)) {
+    if (spec.group !== group) { group = spec.group; const h = document.createElement("h4"); h.textContent = group; p.appendChild(h); }
+    const d = document.createElement("div"); d.className = "pal"; d.draggable = true; d.dataset.type = type;
+    d.title = "Drag onto the canvas (or click to drop at the centre)";
+    d.innerHTML = `<svg viewBox="-46 -26 92 52">${symbol(type, cssVar(spec.color))}</svg><span>${spec.label}<small>${spec.sub}</small></span>`;
+    d.addEventListener("dragstart", e => { e.dataTransfer.setData("text/plain", type); e.dataTransfer.effectAllowed = "copy"; });
+    d.addEventListener("click", () => addComponent(type, view.x + view.w / 2 + (Math.random()-.5)*80, view.y + view.h / 2 + (Math.random()-.5)*60));
+    p.appendChild(d);
+  }
+}
+$("stage").addEventListener("dragover", e => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; });
+$("stage").addEventListener("drop", e => {
+  e.preventDefault(); const type = e.dataTransfer.getData("text/plain");
+  if (!SPEC[type]) return; const w = toWorld(e); addComponent(type, w.x, w.y);
+});
+
+/* keyboard */
+$("stage").addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  const k = e.key.toLowerCase();
+  if ((e.ctrlKey || e.metaKey) && k === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+  else if ((e.ctrlKey || e.metaKey) && k === "y") { e.preventDefault(); redo(); }
+  else if (k === "delete" || k === "backspace") { e.preventDefault(); deleteSel(); }
+  else if (k === "r") rotateSel();
+  else if (k === "w") setTool("wire");
+  else if (k === "v") setTool("select");
+  else if (k === "escape") { cancelWiring(); sel = null; render(); renderInspector(); }
+});
+
+$("t-select").onclick = () => setTool("select"); $("t-wire").onclick = () => setTool("wire");
+$("t-rot").onclick = rotateSel; $("t-del").onclick = deleteSel;
+$("t-undo").onclick = undo; $("t-redo").onclick = redo;
+$("t-fit").onclick = fit; $("t-clear").onclick = clearAll;
+$("z-in").onclick = () => zoom(0.8); $("z-out").onclick = () => zoom(1.25);
+
+/* =====================================================================
+ *  Output to Streamlit
+ * ===================================================================== */
+function schematic() {
+  return {
+    components: comps.map(c => Object.assign({}, c, {terminals: termPos(c)})),
+    wires: wires.map(w => ({x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2})),
+  };
+}
+let emitTimer = null;
+function emit() {
+  clearTimeout(emitTimer);
+  emitTimer = setTimeout(() => {
+    const s = schematic(); const j = JSON.stringify(s);
+    if (j === lastEmit) return; lastEmit = j; ST.setValue(s);
+    window.__lastEmitted = s;
+  }, 120);
+}
+function refresh(withInspector) { render(); if (withInspector) renderInspector(); emit(); }
+
+function loadSchematic(s) {
+  comps = (s.components || []).map(c => { const o = Object.assign({}, c); delete o.terminals; o.rot = o.rot || 0; return o; });
+  wires = (s.wires || []).map(w => ({id: "w" + (nextWire++), x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2}));
+  sel = null; undoStack = []; redoStack = [];
+  fit(); refresh(true);
+}
+
+window.addEventListener("message", ev => {
+  if (!ev.data || ev.data.type !== "streamlit:render") return;
+  const a = ev.data.args || {};
+  if (a.height) ST.setHeight(a.height);
+  if (lastToken === null || a.load_token !== lastToken) {
+    const first = lastToken === null; lastToken = a.load_token;
+    if (a.initial && (a.initial.components || []).length) loadSchematic(a.initial);
+    else if (!first) loadSchematic({components: [], wires: []});
+  }
+});
+window.addEventListener("resize", render);
+
+buildPalette(); renderInspector(); render(); fit();
+ST.ready(); ST.setHeight(640);
+</script>
+</body>
+</html>
