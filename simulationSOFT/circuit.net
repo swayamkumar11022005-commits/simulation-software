@@ -1,8 +1,7 @@
 *dc transient (capacitive n inductive)
-V1 1 0 5.0
-R1 1 2 10
-L1 2 3 10m
-C1 3 0 1u
+*V1 1 0 5
+*R1 1 2 1k
+*C1 2 0 1u
 
 *dc sweep (for some reason it shows v1 node plot only)
 *V1 1 0 12.0
@@ -21,3 +20,12 @@ C1 3 0 1u
 *V1 1 0 AC 5.0 0
 *C1 1 2 1u
 *R1 2 0 1k
+
+* BSIM4.8.3 CMOS Inverter Voltage Transfer Curve (VTC)
+VIN 2 0 1.8
+VDD 1 0 1.8
+R_LOAD 3 0 100meg
+M_N 3 2 0 0 NMOD W=1.2u L=1u MULT_I=1
+M_P 3 2 1 1 PMOD W=2.4u L=1u MULT_I=1
+.MODEL NMOD NMOS VERSION=4.83 VTH0=0.42 U0=450 TOXE=3.0n
+.MODEL PMOD PMOS VERSION=4.83 VTH0=-0.42 U0=200 TOXE=3.0n

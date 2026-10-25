@@ -6,12 +6,12 @@ def parse_spice_value(val_str):
         'T': 1e12, 'G': 1e9, 'MEG': 1e6, 'K': 1e3,
         'M': 1e-3, 'U': 1e-6, 'N': 1e-9, 'P': 1e-12, 'F': 1e-15
     }
-    match = re.match(r"([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)([a-zA-Z]*)", val_str)
+    match = re.match(r"([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)([a-zA-Z]*)", val_str.strip())
     if not match:
         raise ValueError(f"Cannot parse value: {val_str}")
         
     num = float(match.group(1))
-    unit = match.group(2)
+    unit = match.group(2).upper()
     
     if unit:
         mult = 'MEG' if unit.startswith('MEG') else unit[0]
@@ -32,20 +32,65 @@ class NetlistParser:
         except FileNotFoundError:
             raise FileNotFoundError(f"Error: Could not find netlist at {self.filepath}")
 
+        cleaned_lines = []
         for line in lines:
             line = line.strip().upper()
             if not line or line.startswith('*'):
+                continue
+            cleaned_lines.append(line)
+
+        # --- PASS 1: Parse .MODEL cards first (so models exist regardless of line order) ---
+        for line in cleaned_lines:
+            if line.startswith('.MODEL'):
+                # Remove parentheses if used, e.g., .MODEL NMOD NMOS (VTH0=0.45 KETA=-0.047)
+                clean_model_line = line.replace('(', ' ').replace(')', ' ')
+                tokens = clean_model_line.split()
+                if len(tokens) >= 3:
+                    model_name = tokens[1]
+                    mtype = tokens[2]
+                    params = {}
+                    for tok in tokens[3:]:
+                        if '=' in tok:
+                            k, v = tok.split('=', 1)
+                            try:
+                                params[k.lower()] = parse_spice_value(v)
+                            except ValueError:
+                                pass
+                    self.circuit.add_model(model_name, mtype, params)
+
+        # --- PASS 2: Parse circuit components (M, D, R, C, L, V, I) ---
+        for line in cleaned_lines:
+            if line.startswith('.'):
+                # Skip .MODEL or other dot-directives already handled
                 continue
 
             tokens = line.split()
             if len(tokens) >= 3:
                 name, n1, n2 = tokens[0], tokens[1], tokens[2]
 
+                # 1. Handle 4-Terminal BSIM4 MOSFETs: M<name> <D> <G> <S> <B> <ModelName> [param=val ...]
+                if name.startswith('M'):
+                    if len(tokens) >= 6:
+                        d, g, s, b, model_name = tokens[1], tokens[2], tokens[3], tokens[4], tokens[5]
+                        inst_params = {}
+                        for tok in tokens[6:]:
+                            if '=' in tok:
+                                k, v = tok.split('=', 1)
+                                try:
+                                    inst_params[k.lower()] = parse_spice_value(v)
+                                except ValueError:
+                                    print(f"Warning: Could not parse parameter '{tok}' for {name}.")
+                        self.circuit.add_mosfet(name, d, g, s, b, model_name, **inst_params)
+                    else:
+                        print(f"Warning: MOSFET '{name}' requires at least 6 tokens (M D G S B MODEL). Skipping.")
+                    continue
+
+                # 2. Handle Diodes
                 if name.startswith('D'):
                     self.circuit.add_diode(name, n1, n2)
                     continue 
 
-                # For R, V, C, L, and I, we MUST have a 4th token
+                # 3. For R, V, C, L, and I, we MUST have a 4th token
                 if len(tokens) >= 4:
                     dc_val, ac_mag, ac_phase = 0.0, 0.0, 0.0
                     wave_type, wave_amp, wave_freq = 'DC', 0.0, 0.0
@@ -79,6 +124,7 @@ class NetlistParser:
                         self.circuit.add_i_source(name, n1, n2, dc_val, ac_mag, ac_phase, wave_type, wave_amp, wave_freq)
                     else:
                         print(f"Warning: Unsupported device '{name}'. Skipping.")
+                        
         return self.circuit
 
     def determine_analysis_type(self):
